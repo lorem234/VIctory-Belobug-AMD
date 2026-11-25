@@ -12,6 +12,10 @@ jobs:
   build:
     runs-on: windows-2025
     timeout-minutes: 45
+    env:
+      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+      # Bundle the MSVC C runtime into both executables.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: '-C target-feature=+crt-static'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -26,8 +30,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist | Out-Null
-          Copy-Item target\release\victory.exe dist\victory.exe
-          Copy-Item target\diag\victory.exe dist\victory-diag.exe
+          Copy-Item "target\$env:CARGO_BUILD_TARGET\release\victory.exe" dist\victory.exe
+          Copy-Item "target\$env:CARGO_BUILD_TARGET\diag\victory.exe" dist\victory-diag.exe
           Copy-Item README.md, LICENSE, victory.example.toml -Destination dist
           & .\dist\victory.exe --help
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
