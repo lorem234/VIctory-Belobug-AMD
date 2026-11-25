@@ -1,0 +1,64 @@
+name: Windows build
+
+on:
+  push:
+    tags: ['windows-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+      - name: Build standard executable
+        run: cargo build --release --locked -p victory
+      - name: Build diagnostics executable
+        run: cargo build --profile diag --locked -p victory --features diagnostics
+      - name: Stage and check the Windows bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item target\release\victory.exe dist\victory.exe
+          Copy-Item target\diag\victory.exe dist\victory-diag.exe
+          Copy-Item README.md, LICENSE, victory.example.toml -Destination dist
+          & .\dist\victory.exe --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\victory-diag.exe --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: victory-amd-windows-x64
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/windows-')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: victory-amd-windows-x64
+          path: dist
+      - name: Create Windows ZIP
+        working-directory: dist
+        run: zip ../victory-amd-windows-x64.zip victory.exe victory-diag.exe README.md LICENSE victory.example.toml
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" victory-amd-windows-x64.zip \
+            --verify-tag --latest --title "VIctory AMD $GITHUB_REF_NAME" \
+            --notes 'Windows x64 bundle with standard and diagnostics executables. See the included README for runtime requirements.'
